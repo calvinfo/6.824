@@ -9,6 +9,14 @@ import "os"
 import "io"
 import "time"
 
+type LockRecord struct {
+
+  client int
+  request int
+  result bool
+}
+
+
 type LockServer struct {
   mu sync.Mutex
   l net.Listener
@@ -20,7 +28,12 @@ type LockServer struct {
 
   // for each lock name, is it locked?
   locks map[string]bool
+
+  // for each client keep a map of requests
+  requests map[int]LockRecord
 }
+
+
 
 
 //
@@ -34,13 +47,40 @@ func (ls *LockServer) Lock(args *LockArgs, reply *LockReply) error {
 
 
   locked, _ := ls.locks[args.Lockname]
+  record, present := ls.requests[args.ClientId]
 
-  if locked {
-    reply.OK = false
-  } else {
-    reply.OK = true
-    ls.locks[args.Lockname] = true
+  if ls.am_primary {
+    var backupReply LockReply
+    call(ls.backup, "LockServer.Lock", args, &backupReply)
   }
+
+
+  if present == true &&
+    record.request == args.RequestId {
+
+    reply.OK = record.result
+  } else {
+
+    if locked {
+      reply.OK = false
+    } else {
+      reply.OK = true
+      ls.locks[args.Lockname] = true
+    }
+  }
+
+  host := ""
+  if ls.am_primary { host = "primary" } else { host = "secondary" }
+
+  log.Printf("[%s][%d][%d] Lock %s: %t", host,
+            args.ClientId, args.RequestId, args.Lockname, reply.OK)
+
+
+  record = LockRecord{ client  : args.ClientId,
+                       request : args.RequestId,
+                       result  : reply.OK }
+
+  ls.requests[args.ClientId] = record
 
   return nil
 }
@@ -49,8 +89,40 @@ func (ls *LockServer) Lock(args *LockArgs, reply *LockReply) error {
 // server Unlock RPC handler.
 //
 func (ls *LockServer) Unlock(args *UnlockArgs, reply *UnlockReply) error {
+  ls.mu.Lock()
+  defer ls.mu.Unlock()
 
-  // Your code here.
+  locked, _ := ls.locks[args.Lockname]
+  record, present := ls.requests[args.ClientId]
+
+  if ls.am_primary {
+    var backupReply LockReply
+    call(ls.backup, "LockServer.Unlock", args, &backupReply)
+  }
+
+  if present == true &&
+     record.request == args.RequestId {
+
+    reply.OK = record.result
+
+  } else {
+
+    if locked {
+      reply.OK = true
+      ls.locks[args.Lockname] = false
+    } else {
+      reply.OK = false
+    }
+  }
+
+  host := ""
+  if ls.am_primary { host = "primary" } else { host = "secondary" }
+
+  log.Printf("[%s][%d][%d] Unlock %s: %t", host,
+            args.ClientId, args.RequestId, args.Lockname, reply.OK)
+
+  record = LockRecord{ client : args.ClientId, request : args.RequestId, result : reply.OK }
+  ls.requests[args.ClientId] = record
 
   return nil
 }
@@ -90,6 +162,7 @@ func StartServer(primary string, backup string, am_primary bool) *LockServer {
   ls.backup = backup
   ls.am_primary = am_primary
   ls.locks = map[string]bool{}
+  ls.requests = make(map[int]LockRecord)
 
   // Your initialization code here.
 

@@ -91,7 +91,7 @@ func TestPrimaryFail1(t *testing.T) {
   tl(t, ck, "d", true)
 
   p.kill()
-  
+
   tl(t, ck, "a", false)
   tu(t, ck, "a", true)
 
@@ -330,7 +330,7 @@ func TestBackupFail(t *testing.T) {
   tl(t, ck, "d", true)
 
   b.kill()
-  
+
   tl(t, ck, "a", false)
   tu(t, ck, "a", true)
 
