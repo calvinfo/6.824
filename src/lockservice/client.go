@@ -14,6 +14,7 @@ type Clerk struct {
   id int // the id of the client.
 }
 
+
 func MakeClerk(primary string, backup string) *Clerk {
   ck := new(Clerk)
   ck.servers[0] = primary
