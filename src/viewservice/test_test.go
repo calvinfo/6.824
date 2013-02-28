@@ -27,7 +27,7 @@ func port(suffix string) string {
   s := "/var/tmp/824-"
   s += strconv.Itoa(os.Getuid()) + "/"
   os.Mkdir(s, 0777)
-  s += "viewserver-" 
+  s += "viewserver-"
   s += strconv.Itoa(os.Getpid()) + "-"
   s += suffix
   return s
@@ -124,6 +124,7 @@ func Test1(t *testing.T) {
     for i := 0; i < DeadPings * 2; i++ {
       ck3.Ping(0)
       v, _ := ck1.Ping(vx.Viewnum)
+      //fmt.Printf("Got! [%d] primary: %s, backup %s", v.Viewnum, v.Primary, v.Backup)
       if v.Primary == ck1.me && v.Backup == ck3.me {
         break;
       }
@@ -156,7 +157,7 @@ func Test1(t *testing.T) {
     }
   }
   fmt.Printf("  ... Passed\n")
-  
+
 
   // set up a view with just 3 as primary,
   // to prepare for the next test.
@@ -175,7 +176,7 @@ func Test1(t *testing.T) {
   // does viewserver wait for ack of previous view before
   // starting the next one?
   fmt.Printf("Test: Viewserver waits for primary to ack view ...\n")
-  
+
   {
     // set up p=ck3 b=ck1, but
     // but do not ack
