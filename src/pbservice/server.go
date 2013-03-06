@@ -20,21 +20,78 @@ type PBServer struct {
   me string
   vs *viewservice.Clerk
   // Your declarations here.
+  view viewservice.View
+  values map[string]string
 }
 
 func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
+  pb.mu.Lock()
+  defer pb.mu.Unlock()
 
-  // Your code here.
+  if pb.view.Primary != pb.me {
+    reply.Err = ErrWrongServer
+    log.Printf("[PbService] Contacted wrong server: %s", pb.me)
+    return nil
+  }
+
+  val, present := pb.values[args.Key]
+
+  if !present {
+    reply.Err = ErrNoKey
+    log.Printf("[PbService] Missing Key %s", args.Key)
+  } else {
+    reply.Err = OK
+    reply.Value = val
+    log.Printf("[PbService] Get %s: %s", args.Key, val)
+  }
 
   return nil
 }
 
 func (pb *PBServer) Put(args *PutArgs, reply *PutReply) error {
+  pb.mu.Lock()
+  defer pb.mu.Unlock()
+
+  if pb.view.Primary != pb.me {
+    reply.Err = ErrWrongServer
+    log.Printf("[PbService] Contacted wrong server: %s", pb.me)
+    return nil
+  }
+
+  log.Printf("[PbService] Set %s: %s", args.Key, args.Value)
+  pb.values[args.Key] = args.Value
+
+  // Forward to the backup
+  if pb.view.Backup != "" {
+    forwardArgs := ForwardArgs{ Key : args.Key, Value : args.Value }
+    forwardReply := ForwardReply{}
+    call(pb.view.Backup, "PBServer.Forward", forwardArgs, &forwardReply)
+  }
+
   reply.Err = OK
+  return nil
+}
 
 
-  // Your code here.
+func (pb *PBServer) Forward(args *ForwardArgs, reply *ForwardReply) error {
+  pb.mu.Lock()
+  defer pb.mu.Unlock()
 
+  log.Printf("[PbService] Forward %s: %s", args.Key, args.Value)
+
+  pb.values[args.Key] = args.Value
+  reply.Err = OK
+  return nil
+}
+
+
+func (pb *PBServer) Backup(args *BackupArgs, reply *BackupReply) error {
+  pb.mu.Lock()
+  defer pb.mu.Unlock()
+
+  log.Printf("[PbService] Backup received: %d keys", len(args.Values))
+  pb.values = args.Values
+  reply.Err = OK
   return nil
 }
 
@@ -46,8 +103,20 @@ func (pb *PBServer) Put(args *PutArgs, reply *PutReply) error {
 //   manage transfer of state from primary to new backup.
 //
 func (pb *PBServer) tick() {
+  pb.mu.Lock()
+  defer pb.mu.Unlock()
+  result, _ := pb.vs.Ping(pb.view.Viewnum);
+  if result.Viewnum != pb.view.Viewnum {
+    log.Printf("[PbService] Updated View(%d)", result.Viewnum)
 
-  // Your code here.
+    if result.Backup != "" && pb.me == result.Primary {
+      args := BackupArgs{ Values : pb.values }
+      reply := BackupReply{}
+      call(result.Backup, "PBServer.Backup", args, &reply)
+    }
+
+    pb.view = result
+  }
 }
 
 // tell the server to shut itself down.
@@ -63,6 +132,8 @@ func StartServer(vshost string, me string) *PBServer {
   pb.me = me
   pb.vs = viewservice.MakeClerk(me, vshost)
   // Your pb.* initializations here.
+  pb.view = viewservice.View{}
+  pb.values = make(map[string]string)
 
   rpcs := rpc.NewServer()
   rpcs.Register(pb)

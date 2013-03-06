@@ -5,7 +5,7 @@ import "net/rpc"
 import "log"
 import "time"
 import "sync"
-import "fmt"
+//import "fmt"
 import "os"
 
 type ViewServer struct {
@@ -31,12 +31,12 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 
   vs.times[args.Me] = time.Now()
 
-  log.Printf("[View Service] Received ping(%d): %s", args.Viewnum, args.Me)
+  //log.Printf("[View Service] Received ping(%d): %s", args.Viewnum, args.Me)
 
   view := vs.views[vs.currentView]
 
   if view.Primary == args.Me && view.Viewnum == args.Viewnum {
-    log.Printf("[View Service] Primary Ack: %d", view.Viewnum);
+    //log.Printf("[View Service] Primary Ack: %d", view.Viewnum);
     vs.primaryAck = view.Viewnum
   }
 
@@ -44,10 +44,10 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 
   if newView.Viewnum != vs.currentView && newView.Viewnum <= vs.primaryAck + 1 {
 
-    log.Printf(`[View Service] Updating View(%d):
+    /*log.Printf(`[View Service] Updating View(%d):
                                Primary: (%s)
                                Backup: (%s)`, newView.Viewnum, newView.Primary,
-                                              newView.Backup)
+                                              newView.Backup)*/
 
     vs.currentView = newView.Viewnum
     vs.views[newView.Viewnum] = newView
@@ -96,10 +96,10 @@ func (vs *ViewServer) tick() {
   // If the primary has elapsed, try and replace it
   if pExists && time.Since(primaryTime) > PingInterval * DeadPings {
 
-    log.Printf(`[View Service] Detected Primary Dead(%d):
+    /*log.Printf(`[View Service] Detected Primary Dead(%d):
                                Primary: (%s)
                                Backup: (%s)`, view.Viewnum, view.Primary,
-                                              view.Backup)
+                                              view.Backup)*/
 
     newView := View{ Viewnum: view.Viewnum + 1,
                      Primary: view.Backup }
@@ -109,10 +109,10 @@ func (vs *ViewServer) tick() {
     vs.currentView = newView.Viewnum
     vs.views[vs.currentView] = newView
 
-    log.Printf(`[View Service] Updating View, Primary Dead(%d):
+    /*log.Printf(`[View Service] Updating View, Primary Dead(%d):
                                Primary: (%s)
                                Backup: (%s)`, newView.Viewnum, newView.Primary,
-                                              newView.Backup)
+                                              newView.Backup)*/
   } else if bExists && time.Since(backupTime) > PingInterval * DeadPings {
 
     // Only replace the secondary.
@@ -172,7 +172,7 @@ func StartServer(me string) *ViewServer {
         conn.Close()
       }
       if err != nil && vs.dead == false {
-        fmt.Printf("ViewServer(%v) accept: %v\n", me, err.Error())
+        //fmt.Printf("ViewServer(%v) accept: %v\n", me, err.Error())
         vs.Kill()
       }
     }
@@ -201,7 +201,7 @@ func UpdateView(view *View, server string, clientnum uint) View {
      view.Viewnum > 1 && // view number is over one
      server == view.Primary {
 
-    log.Printf("[View Service] Primary Restarted: %s", server)
+    //log.Printf("[View Service] Primary Restarted: %s", server)
     view.Primary = ""
   }
 

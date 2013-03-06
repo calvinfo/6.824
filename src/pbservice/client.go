@@ -2,8 +2,7 @@ package pbservice
 
 import "viewservice"
 import "net/rpc"
-// You'll probably need to uncomment this:
-// import "time"
+import "time"
 
 
 type Clerk struct {
@@ -40,7 +39,7 @@ func call(srv string, rpcname string,
     return false
   }
   defer c.Close()
-    
+
   err := c.Call(rpcname, args, reply)
   if err == nil {
     return true
@@ -57,9 +56,22 @@ func call(srv string, rpcname string,
 //
 func (ck *Clerk) Get(key string) string {
 
-  // Your code here.
+  reply := GetReply{}
+  args := GetArgs{ Key : key }
+  var primary string = ck.vs.Primary()
+  ok := call(primary, "PBServer.Get", args, &reply)
 
-  return "???"
+  for ok == false || primary == "" || reply.Err == ErrWrongServer {
+    time.Sleep(viewservice.PingInterval)
+    primary = ck.vs.Primary()
+    ok = call(primary, "PBServer.Get", args, &reply)
+  }
+
+  if reply.Err == ErrNoKey {
+    return ""
+  }
+
+  return reply.Value
 }
 
 //
@@ -68,5 +80,16 @@ func (ck *Clerk) Get(key string) string {
 //
 func (ck *Clerk) Put(key string, value string) {
 
-  // Your code here.
+  args := PutArgs{ Key : key, Value : value }
+  reply := PutReply{}
+  var primary string = ck.vs.Primary()
+  ok := call(primary, "PBServer.Put", args, &reply)
+
+  for ok == false || primary == "" || reply.Err != OK {
+    time.Sleep(viewservice.PingInterval)
+    primary = ck.vs.Primary()
+    ok = call(primary, "PBServer.Put", args, &reply)
+  }
+
+  return
 }
