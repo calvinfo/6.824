@@ -29,6 +29,30 @@ import "sync"
 import "fmt"
 import "math/rand"
 
+type Agreement struct {
+  seq int
+  decided bool
+  value string
+}
+
+type PrepareArgs struct {
+  seq int
+}
+
+type PrepareReply struct {
+
+}
+
+
+type AcceptArgs struct {
+  seq int
+  value string
+}
+
+type AcceptReply struct {
+
+}
+
 
 type Paxos struct {
   mu sync.Mutex
@@ -41,6 +65,7 @@ type Paxos struct {
 
 
   // Your data here.
+  instances map[int]Agreement
 }
 
 //
@@ -69,13 +94,14 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
     return false
   }
   defer c.Close()
-    
+
   err = c.Call(name, args, reply)
   if err == nil {
     return true
   }
   return false
 }
+
 
 
 //
@@ -139,7 +165,7 @@ func (px *Paxos) Max() int {
 // life, it will need to catch up on instances that it
 // missed -- the other peers therefor cannot forget these
 // instances.
-// 
+//
 func (px *Paxos) Min() int {
   // You code here.
   return 0
@@ -182,6 +208,7 @@ func Make(peers []string, me int, rpcs *rpc.Server) *Paxos {
 
 
   // Your initialization code here.
+  px.instances = make(map[int]Agreement)
 
   if rpcs != nil {
     // caller will create socket &c
@@ -198,10 +225,10 @@ func Make(peers []string, me int, rpcs *rpc.Server) *Paxos {
       log.Fatal("listen error: ", e);
     }
     px.l = l
-    
+
     // please do not change any of the following code,
     // or do anything to subvert it.
-    
+
     // create a thread to accept RPC connections
     go func() {
       for px.dead == false {
