@@ -32,25 +32,40 @@ import "math/rand"
 type Agreement struct {
   seq int
   decided bool
-  value string
+  value interface{}
 }
 
+
+type Accept struct {
+  Seq int
+  Value interface{}
+}
+
+const (
+  OK = "OK"
+)
+
+type Err string
+
 type PrepareArgs struct {
-  seq int
+  Seq int
 }
 
 type PrepareReply struct {
-
+  OK bool
+  Err Err
 }
 
 
 type AcceptArgs struct {
-  seq int
-  value string
+  Seq int
+  Value string
 }
 
 type AcceptReply struct {
-
+  OK bool
+  Accept Accept
+  Err Err
 }
 
 
@@ -66,6 +81,8 @@ type Paxos struct {
 
   // Your data here.
   instances map[int]Agreement
+  maxPrepare int
+  accept Accept
 }
 
 //
@@ -179,8 +196,42 @@ func (px *Paxos) Min() int {
 // it should not contact other Paxos peers.
 //
 func (px *Paxos) Status(seq int) (bool, interface{}) {
-  // Your code here.
-  return false, nil
+  agreement, present := px.instances[seq]
+
+  if !present {
+    return false, nil
+  }
+
+  return agreement.decided, agreement.value
+}
+
+
+func (px *Paxos) Accept(args *AcceptArgs, reply *AcceptReply) bool {
+
+  if (args.Seq >= px.maxPrepare) {
+    px.maxPrepare = args.Seq
+    px.accept.seq = args.Seq
+    px.accept.val = args.Val
+    reply.OK = true
+  }
+
+  return true
+}
+
+
+func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) bool {
+  px.mu.Lock()
+  defer px.mu.Unlock()
+
+  if (args.Seq > px.maxPrepare) {
+    px.maxPrepare = args.Seq
+    reply.OK = true
+    reply.Accept = px.accept
+  } else {
+    reply.OK = false
+  }
+
+  return true
 }
 
 
