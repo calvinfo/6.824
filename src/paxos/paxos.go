@@ -30,9 +30,9 @@ import "fmt"
 import "math/rand"
 
 type Agreement struct {
-  seq int
-  decided bool
-  value interface{}
+  Seq int
+  Decided bool
+  Value interface{}
 }
 
 
@@ -54,18 +54,24 @@ type PrepareArgs struct {
 type PrepareReply struct {
   OK bool
   Err Err
+  Accept Accept
 }
 
 
 type AcceptArgs struct {
   Seq int
-  Value string
+  Value interface{}
 }
 
 type AcceptReply struct {
   OK bool
   Accept Accept
   Err Err
+}
+
+type DecidedArgs struct {
+  Seq int
+  Value interface{}
 }
 
 
@@ -129,7 +135,7 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 // is reached.
 //
 func (px *Paxos) Start(seq int, v interface{}) {
-  // Your code here.
+  px.SendPrepare(seq, v)
 }
 
 //
@@ -202,17 +208,79 @@ func (px *Paxos) Status(seq int) (bool, interface{}) {
     return false, nil
   }
 
-  return agreement.decided, agreement.value
+  return agreement.Decided, agreement.Value
+}
+
+
+func (px *Paxos) SendPrepare(seq int, value interface {}) {
+  var args PrepareArgs
+  replies := make([]*PrepareReply, len(px.peers))
+  for i, peer := range px.peers {
+    args = PrepareArgs{Seq: seq}
+    replies[i] = PrepareReply{}
+    call(peer, "Paxos.Prepare", args, &replies[i])
+  }
+
+  numReplies := 0
+  highestAccept := Accept{Value : value}
+
+  for _, reply := range replies {
+    if reply.OK {
+      numReplies += 1
+      if reply.Accept.Seq > highestAccept.Seq {
+        highestAccept = reply.Accept
+      }
+    }
+  }
+
+  if numReplies < (len(px.peers) / 2) {
+    return;
+  }
+
+  acceptArgs := AcceptArgs{Seq   : seq,
+                           Value : highestAccept.Value}
+
+  acceptedReplies := make([]*AcceptReply, len(px.peers))
+  numAccepted := 0
+
+  for i, peer := range px.peers {
+    acceptedReplies[i] = AcceptReply{}
+    call(peer, "Paxos.Accept", acceptArgs, &acceptedReplies[i])
+  }
+
+  for _, reply := range acceptedReplies {
+    if reply.OK {
+      numAccepted += 1
+    }
+  }
+
+  if (numAccepted < len(px.peers)) / 2 {
+    return
+  }
+
+  decideArgs := DecideArgs{Seq   : seq,
+                           Value : highestAccept.Value}
+
+  for i, peer := range px.peers {
+    call(peer, "Paxos.Decide", decideArgs)
+  }
 }
 
 
 func (px *Paxos) Accept(args *AcceptArgs, reply *AcceptReply) bool {
+  px.mu.Lock()
+  defer px.mu.Unlock()
 
   if (args.Seq >= px.maxPrepare) {
     px.maxPrepare = args.Seq
     px.accept.seq = args.Seq
     px.accept.val = args.Val
+    px.agreements[args.Seq] = Agreement{Seq: args.Seq,
+                                        Decided: false,
+                                        Value: args.Value}
     reply.OK = true
+  } else {
+    reply.OK = false
   }
 
   return true
@@ -231,6 +299,14 @@ func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) bool {
     reply.OK = false
   }
 
+  return true
+}
+
+
+func (px *Paxos) Decided(args *DecidedArgs) bool {
+  px.instances[args.Seq] = Agreement{Seq: args.Seq,
+                                     Value: args.Value,
+                                     Decided: true }
   return true
 }
 
