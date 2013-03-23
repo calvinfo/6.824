@@ -138,7 +138,7 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 // is reached.
 //
 func (px *Paxos) Start(seq int, v interface{}) {
-  px.SendPrepare(seq, v)
+  go px.SendPrepare(seq, v)
 }
 
 //
@@ -149,6 +149,7 @@ func (px *Paxos) Start(seq int, v interface{}) {
 //
 func (px *Paxos) Done(seq int) {
   // Your code here.
+
 }
 
 //
@@ -157,8 +158,7 @@ func (px *Paxos) Done(seq int) {
 // this peer.
 //
 func (px *Paxos) Max() int {
-  // Your code here.
-  return 0
+  return px.maxPrepare
 }
 
 //
@@ -266,6 +266,8 @@ func (px *Paxos) SendPrepare(seq int, value interface{}) {
     return
   }
 
+  log.Printf("[%d] Sending decide for %d, value %v", px.me, seq, highestAccept.Value)
+
   decideArgs := DecideArgs{Seq   : seq,
                            Value : highestAccept.Value}
   decideReply := DecideReply{}
@@ -305,7 +307,7 @@ func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
 
   log.Printf("[%d] Received prepare call", px.me)
 
-  if (args.Seq >= px.maxPrepare) {
+  if (args.Seq > px.maxPrepare) {
     px.maxPrepare = args.Seq
     reply.OK = true
     reply.Accept = px.accept
@@ -353,6 +355,8 @@ func Make(peers []string, me int, rpcs *rpc.Server) *Paxos {
   // Your initialization code here.
   px.instances = make(map[int]Agreement)
   px.agreements = make(map[int]Agreement)
+  px.accept = Accept{}
+  px.maxPrepare = -1
 
   if rpcs != nil {
     // caller will create socket &c
