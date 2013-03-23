@@ -69,10 +69,12 @@ type AcceptReply struct {
   Err Err
 }
 
-type DecidedArgs struct {
+type DecideArgs struct {
   Seq int
   Value interface{}
 }
+
+type DecideReply struct {}
 
 
 type Paxos struct {
@@ -87,6 +89,7 @@ type Paxos struct {
 
   // Your data here.
   instances map[int]Agreement
+  agreements map[int]Agreement
   maxPrepare int
   accept Accept
 }
@@ -217,7 +220,7 @@ func (px *Paxos) SendPrepare(seq int, value interface {}) {
   replies := make([]*PrepareReply, len(px.peers))
   for i, peer := range px.peers {
     args = PrepareArgs{Seq: seq}
-    replies[i] = PrepareReply{}
+    replies[i] = &PrepareReply{}
     call(peer, "Paxos.Prepare", args, &replies[i])
   }
 
@@ -244,7 +247,7 @@ func (px *Paxos) SendPrepare(seq int, value interface {}) {
   numAccepted := 0
 
   for i, peer := range px.peers {
-    acceptedReplies[i] = AcceptReply{}
+    acceptedReplies[i] = &AcceptReply{}
     call(peer, "Paxos.Accept", acceptArgs, &acceptedReplies[i])
   }
 
@@ -254,27 +257,28 @@ func (px *Paxos) SendPrepare(seq int, value interface {}) {
     }
   }
 
-  if (numAccepted < len(px.peers)) / 2 {
+  if numAccepted < len(px.peers) / 2 {
     return
   }
 
   decideArgs := DecideArgs{Seq   : seq,
                            Value : highestAccept.Value}
+  decideReply := DecideReply{}
 
-  for i, peer := range px.peers {
-    call(peer, "Paxos.Decide", decideArgs)
+  for _, peer := range px.peers {
+    call(peer, "Paxos.Decide", decideArgs, &decideReply)
   }
 }
 
 
-func (px *Paxos) Accept(args *AcceptArgs, reply *AcceptReply) bool {
+func (px *Paxos) Accept(args *AcceptArgs, reply *AcceptReply) error {
   px.mu.Lock()
   defer px.mu.Unlock()
 
   if (args.Seq >= px.maxPrepare) {
-    px.maxPrepare = args.Seq
-    px.accept.seq = args.Seq
-    px.accept.val = args.Val
+    px.maxPrepare   = args.Seq
+    px.accept.Seq   = args.Seq
+    px.accept.Value = args.Value
     px.agreements[args.Seq] = Agreement{Seq: args.Seq,
                                         Decided: false,
                                         Value: args.Value}
@@ -283,11 +287,11 @@ func (px *Paxos) Accept(args *AcceptArgs, reply *AcceptReply) bool {
     reply.OK = false
   }
 
-  return true
+  return nil
 }
 
 
-func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) bool {
+func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
   px.mu.Lock()
   defer px.mu.Unlock()
 
@@ -299,15 +303,15 @@ func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) bool {
     reply.OK = false
   }
 
-  return true
+  return nil
 }
 
 
-func (px *Paxos) Decided(args *DecidedArgs) bool {
+func (px *Paxos) Decided(args *DecideArgs, reply *DecideReply) error {
   px.instances[args.Seq] = Agreement{Seq: args.Seq,
                                      Value: args.Value,
                                      Decided: true }
-  return true
+  return nil
 }
 
 
@@ -336,6 +340,7 @@ func Make(peers []string, me int, rpcs *rpc.Server) *Paxos {
 
   // Your initialization code here.
   px.instances = make(map[int]Agreement)
+  px.agreements = make(map[int]Agreement)
 
   if rpcs != nil {
     // caller will create socket &c
