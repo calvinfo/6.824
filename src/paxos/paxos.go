@@ -215,7 +215,10 @@ func (px *Paxos) Status(seq int) (bool, interface{}) {
 }
 
 
-func (px *Paxos) SendPrepare(seq int, value interface {}) {
+func (px *Paxos) SendPrepare(seq int, value interface{}) {
+
+  log.Printf("[%d] Sending prepare %d", px.me, seq)
+
   var args PrepareArgs
   replies := make([]*PrepareReply, len(px.peers))
   for i, peer := range px.peers {
@@ -235,6 +238,8 @@ func (px *Paxos) SendPrepare(seq int, value interface {}) {
       }
     }
   }
+
+  log.Printf("[%d] Received %d replies for seq %d", px.me, numReplies, seq)
 
   if numReplies < (len(px.peers) / 2) {
     return;
@@ -272,6 +277,8 @@ func (px *Paxos) SendPrepare(seq int, value interface {}) {
 
 
 func (px *Paxos) Accept(args *AcceptArgs, reply *AcceptReply) error {
+
+  log.Printf("[%d] Received accept call", px.me)
   px.mu.Lock()
   defer px.mu.Unlock()
 
@@ -292,10 +299,13 @@ func (px *Paxos) Accept(args *AcceptArgs, reply *AcceptReply) error {
 
 
 func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
+
   px.mu.Lock()
   defer px.mu.Unlock()
 
-  if (args.Seq > px.maxPrepare) {
+  log.Printf("[%d] Received prepare call", px.me)
+
+  if (args.Seq >= px.maxPrepare) {
     px.maxPrepare = args.Seq
     reply.OK = true
     reply.Accept = px.accept
@@ -303,11 +313,13 @@ func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
     reply.OK = false
   }
 
+  log.Printf("[%d] Max prepare: %d, Seq: %d, OK: %t", px.me, px.maxPrepare, args.Seq, reply.OK)
+
   return nil
 }
 
 
-func (px *Paxos) Decided(args *DecideArgs, reply *DecideReply) error {
+func (px *Paxos) Decide(args *DecideArgs, reply *DecideReply) error {
   px.instances[args.Seq] = Agreement{Seq: args.Seq,
                                      Value: args.Value,
                                      Decided: true }
